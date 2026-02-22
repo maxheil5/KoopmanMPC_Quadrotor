@@ -1,0 +1,38 @@
+version: 1
+frame: NED
+units:
+  position_m: m
+  velocity_mps: m/s
+  angles_rad: rad
+  rates_rads: rad/s
+  quaternion: unitless
+
+# Per-component bounds used for uniform quantization.
+# These are conservative defaults for hover/excitation in SITL.
+# tighten later once observe typical ranges.
+bounds:
+  # position (m): LOCAL_POSITION_NED
+  x_n: [-5.0, 5.0]
+  y_e: [-5.0, 5.0]
+  z_d: [-4.0, -0.3]
+
+  # velocity (m/s)
+  vx: [-5.0, 5.0]
+  vy: [-5.0, 5.0]
+  vz: [-5.0, 5.0]
+
+  # euler angles (rad)
+  roll:  [-1.5, 1.5]
+  pitch: [-1.5, 1.5]
+  yaw:   [-3.5, 3.5]
+
+  # body rates (rad/s)
+  p: [-6.0, 6.0]
+  q: [-6.0, 6.0]
+  r: [-6.0, 6.0]
+
+  # quaternion (w,x,y,z)
+  q1: [-1.2, 1.2]
+  q2: [-1.2, 1.2]
+  q3: [-1.2, 1.2]
+  q4: [-1.2, 1.2]
