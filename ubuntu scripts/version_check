@@ -1,0 +1,23 @@
+# OS + kernel
+lsb_release -a
+uname -a
+
+# Toolchain
+python3 --version
+gcc --version
+cmake --version
+git --version
+
+# Gazebo version check (Classic)
+gazebo --version || true
+which gzserver || true
+which gzclient || true
+
+# New Gazebo ("gz") check (Garden/Fortress/Harmonic etc.)
+gz sim --version || true
+gz --version || true
+which gz || true
+
+# GPU/driver quick health checks
+glxinfo -B | sed -n '1,25p' || true
+nvidia-smi || true
