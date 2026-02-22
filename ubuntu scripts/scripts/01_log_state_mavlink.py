@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent))  # adds ubuntu scripts/scripts to sys.path
+sys.path.append(str(Path(__file__).resolve().parent))  # allow `common.*` imports reliably
 
 import argparse
 import csv
@@ -15,6 +15,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--experiment_yaml", type=str, default="ubuntu scripts/config/experiment.yaml")
     ap.add_argument("--scenario", type=str, required=True, help="hover or excitation (must exist in ref_traj.yaml)")
+    ap.add_argument("--outdir", type=str, default="", help="If set, write outputs directly here (no extra timestamp folder).")
     ap.add_argument("--duration_s", type=float, default=0.0, help="override duration; 0 uses ref_traj.yaml")
     ap.add_argument("--rate_hz", type=float, default=0.0, help="override rate; 0 uses experiment.yaml logging.rate_hz")
     args = ap.parse_args()
@@ -25,23 +26,28 @@ def main():
         exp_path = (Path.cwd() / exp_path).resolve()
 
     ref_path = root / "config" / "ref_traj.yaml"
-
     exp = yaml.safe_load(exp_path.read_text())
     ref = yaml.safe_load(ref_path.read_text())
 
     port = int(exp["mavlink"]["listen_port"])
-    out_root = (Path.cwd() / exp["paths"]["out_root"]).resolve()
-    ensure_dir(out_root)
 
     traj = ref["trajectories"][args.scenario]
     duration = float(args.duration_s) if args.duration_s > 0 else float(traj["duration_s"])
     rate_hz = float(args.rate_hz) if args.rate_hz > 0 else float(exp["logging"]["rate_hz"])
     dt = 1.0 / max(rate_hz, 1.0)
 
-    # Create run folder
-    run_dir = ensure_dir(out_root / args.scenario / time.strftime("%Y%m%d_%H%M%S"))
+    # Decide output directory (robust mode uses --outdir)
+    if args.outdir:
+        run_dir = ensure_dir(Path(args.outdir).expanduser().resolve())
+        manifest_name = "logger_manifest.json"  # avoid clobbering 05_run_trial.py manifest.json
+    else:
+        out_root = (Path.cwd() / exp["paths"]["out_root"]).resolve()
+        ensure_dir(out_root)
+        run_dir = ensure_dir(out_root / args.scenario / time.strftime("%Y%m%d_%H%M%S"))
+        manifest_name = exp["paths"]["run_manifest_name"]
+
     csv_path = run_dir / "state_raw.csv"
-    manifest_path = run_dir / exp["paths"]["run_manifest_name"]
+    manifest_path = run_dir / manifest_name
 
     # Connect MAVLink
     print(f"[01] Connecting MAVLink udpin:{port} ...")
@@ -108,16 +114,14 @@ def main():
                 w.writerow(row)
                 last_write = t
 
-    # Write manifest
     write_json(manifest_path, {
         "scenario": args.scenario,
         "duration_s": duration,
         "rate_hz": rate_hz,
         "mavlink_listen_port": port,
-        "outputs": {
-            "state_raw_csv": str(csv_path),
-        },
+        "outputs": {"state_raw_csv": str(csv_path)},
         "ref_traj": traj,
+        "note": "Logger manifest. Trial-level manifest is written by 05_run_trial.py.",
     })
 
     print(f"[01] Done. Wrote {csv_path} and {manifest_path}")
