@@ -1,31 +1,27 @@
 version: 1
 
-# MAVLink listen ports.
 mavlink:
+  # PX4 SITL "Normal" link typically sends to remote UDP 14550.
   listen_port: 14550
 
 logging:
   rate_hz: 50
-  # 0 means run until duration_s is reached; logger always writes at ~rate_hz when data available.
-  flush_every_n_rows: 200
+  duration_s_default: 30.0
 
 scenarios:
-  # names must match ubuntu scripts/config/ref_traj.yaml -> trajectories keys
+  # Must match keys in `config/ref_traj.yaml`
   - hover
   - excitation
 
-# Quantization sweep
 quantization:
   enabled: true
   b_list: [4, 8, 12, 14, 16]
-  seeds: [1, 2, 3, 4, 5]     # start small; scale later
-  bounds_yaml: ubuntu_scripts/config/quantization_bounds.yaml
-  safety_margin_frac: 0.05   # inflate min/max range by 5% before quantization
+  seeds: [1, 2, 3, 4, 5]
+  bounds_yaml: "ubuntu scripts/config/quantization_bounds.yaml"
+  safety_margin_frac: 0.05
 
-# Repeats per (scenario, b, seed)
 trials_per_setting: 2
 
-# Output organization
 paths:
-  out_root: ubuntu_scripts/outputs
-  run_manifest_name: manifest.json
+  out_root: "ubuntu scripts/outputs"
+  run_manifest_name: "manifest.json"
