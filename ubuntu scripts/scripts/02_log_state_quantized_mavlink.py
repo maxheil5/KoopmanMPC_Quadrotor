@@ -1,7 +1,10 @@
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent))  # adds ubuntu scripts/scripts to sys.path
+
 import argparse
 import csv
 import time
-from pathlib import Path
 
 import yaml
 
