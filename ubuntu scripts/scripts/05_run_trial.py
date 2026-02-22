@@ -1,6 +1,10 @@
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent))
+
 import argparse
 import subprocess
-from pathlib import Path
+import time
 
 import yaml
 from common.io_utils import ensure_dir, write_json
@@ -31,14 +35,13 @@ def main():
     out_root = (Path.cwd() / exp["paths"]["out_root"]).resolve()
     ensure_dir(out_root)
 
-    # Make a standardized run directory
+    # Standard run dir name
     tag = f"trial{args.trial_id:02d}"
     if args.mode == "quantized":
         tag = f"b{args.b}_seed{args.seed}_" + tag
+    run_dir = ensure_dir(out_root / args.scenario / f"{time.strftime('%Y%m%d_%H%M%S')}_{tag}")
 
-    run_dir = ensure_dir(out_root / args.scenario / tag)
-
-    # Copy config snapshots into run_dir for reproducibility
+    # Snapshot configs
     cfg_snapshot_dir = ensure_dir(run_dir / "config_snapshot")
     (cfg_snapshot_dir / "experiment.yaml").write_text(exp_path.read_text())
     (cfg_snapshot_dir / "ref_traj.yaml").write_text((root / "config" / "ref_traj.yaml").read_text())
@@ -54,22 +57,50 @@ def main():
         "run_dir": str(run_dir),
     }
 
-    # Decide which logger to run
+    # 1) Run logger INTO run_dir
     if args.mode == "raw":
         script = root / "scripts" / "01_log_state_mavlink.py"
-        cmd = ["python3", str(script), "--scenario", args.scenario]
+        cmd = ["python3", str(script),
+               "--experiment_yaml", str(exp_path),
+               "--scenario", args.scenario,
+               "--outdir", str(run_dir)]
         if args.duration_s > 0:
             cmd += ["--duration_s", str(args.duration_s)]
         run(cmd)
-        manifest["outputs"] = {"state_raw_csv": "state_raw.csv (inside timestamped subdir per 01 script)"}
+        state_csv_name = "state_raw.csv"
     else:
         script = root / "scripts" / "02_log_state_quantized_mavlink.py"
-        cmd = ["python3", str(script), "--scenario", args.scenario, "--b", str(args.b), "--seed", str(args.seed)]
+        cmd = ["python3", str(script),
+               "--experiment_yaml", str(exp_path),
+               "--scenario", args.scenario,
+               "--b", str(args.b),
+               "--seed", str(args.seed),
+               "--outdir", str(run_dir)]
         if args.duration_s > 0:
             cmd += ["--duration_s", str(args.duration_s)]
-        # Run quantized logger; it will create its own timestamped folder inside scenario/
         run(cmd)
-        manifest["outputs"] = {"state_raw_and_qd_csv": "state_raw_and_qd.csv (inside timestamped subdir per 02 script)"}
+        state_csv_name = "state_raw_and_qd.csv"
+
+    state_csv_path = run_dir / state_csv_name
+    if not state_csv_path.exists():
+        raise FileNotFoundError(f"Expected state CSV not found: {state_csv_path}")
+
+    # 2) Extract inputs from newest ULog into run_dir
+    script03 = root / "scripts" / "03_log_inputs_from_ulog.py"
+    run(["python3", str(script03), "--outdir", str(run_dir)])
+
+    # 3) Export aligned table for MATLAB
+    script04 = root / "scripts" / "04_export_csv_to_matlab.py"
+    run(["python3", str(script04), "--run_dir", str(run_dir), "--state_csv", state_csv_name])
+
+    manifest["outputs"] = {
+        "state_csv": str(state_csv_path),
+        "inputs_csv": str(run_dir / "inputs.csv"),
+        "inputs_meta_json": str(run_dir / "inputs_meta.json"),
+        "trial_for_matlab_csv": str(run_dir / "trial_for_matlab.csv"),
+        "trial_meta_json": str(run_dir / "trial_for_matlab_meta.json"),
+        "logger_manifest_json": str(run_dir / "logger_manifest.json"),
+    }
 
     write_json(run_dir / exp["paths"]["run_manifest_name"], manifest)
     print(f"[05] Trial done. Manifest: {run_dir / exp['paths']['run_manifest_name']}")
