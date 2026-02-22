@@ -1,0 +1,59 @@
+version: 1
+
+# Coordinate frame convention for refs:
+# PX4 local position setpoints are typically NED (x=north, y=east, z=down).
+frame: NED
+
+trajectories:
+  hover:
+    description: "Hold a fixed position and yaw."
+    duration_s: 30.0
+    rate_hz: 50
+    start:
+      x_n: 0.0
+      y_e: 0.0
+      z_d: -1.5     # negative down => 1.5 m above origin
+      yaw_rad: 0.0
+    type: hold
+
+  excitation:
+    description: "Persistently-exciting position setpoint variations around a hover point."
+    duration_s: 40.0
+    rate_hz: 50
+    base:
+      x_n: 0.0
+      y_e: 0.0
+      z_d: -1.5
+      yaw_rad: 0.0
+
+    # Excitation signal: sum of sinusoids (deterministic) + optional small PRBS
+    # This excites translational + yaw dynamics while staying near hover.
+    type: sum_of_sines
+
+    # Amplitudes (meters and radians)
+    amp:
+      x_n_m: 0.6
+      y_e_m: 0.6
+      z_d_m: 0.2
+      yaw_rad: 0.3
+
+    # Frequencies (Hz) used in the sum-of-sines
+    freqs_hz: [0.10, 0.17, 0.29, 0.41]
+
+    # Optional PRBS component (small step changes)
+    prbs:
+      enabled: true
+      seed: 1
+      step_period_s: 1.0
+      step_amp_scale: 0.15   # multiplied by amp.{x,y,z,yaw}
+
+    # Safety limits (clamps)
+    clamp:
+      x_n_min: -3.0
+      x_n_max:  3.0
+      y_e_min: -3.0
+      y_e_max:  3.0
+      z_d_min: -3.0
+      z_d_max: -0.5
+      yaw_min: -3.1416
+      yaw_max:  3.1416
