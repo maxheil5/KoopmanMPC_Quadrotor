@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent))  # adds ubuntu scripts/scripts to sys.path
+sys.path.append(str(Path(__file__).resolve().parent))  # allow `common.*` imports reliably
 
 import argparse
 import csv
@@ -19,6 +19,7 @@ def main():
     ap.add_argument("--scenario", type=str, required=True)
     ap.add_argument("--b", type=int, required=True)
     ap.add_argument("--seed", type=int, required=True)
+    ap.add_argument("--outdir", type=str, default="", help="If set, write outputs directly here (no extra timestamp folder).")
     ap.add_argument("--duration_s", type=float, default=0.0)
     ap.add_argument("--rate_hz", type=float, default=0.0)
     args = ap.parse_args()
@@ -38,8 +39,6 @@ def main():
     bounds = bounds_cfg["bounds"]
 
     port = int(exp["mavlink"]["listen_port"])
-    out_root = (Path.cwd() / exp["paths"]["out_root"]).resolve()
-    ensure_dir(out_root)
 
     traj = ref["trajectories"][args.scenario]
     duration = float(args.duration_s) if args.duration_s > 0 else float(traj["duration_s"])
@@ -49,9 +48,18 @@ def main():
     margin = float(exp["quantization"].get("safety_margin_frac", 0.05))
     qc = QuantConfig(b=int(args.b), seed=int(args.seed), safety_margin_frac=margin)
 
-    run_dir = ensure_dir(out_root / args.scenario / f"b{qc.b}_seed{qc.seed}_{time.strftime('%Y%m%d_%H%M%S')}")
+    # Decide output directory (robust mode uses --outdir)
+    if args.outdir:
+        run_dir = ensure_dir(Path(args.outdir).expanduser().resolve())
+        manifest_name = "logger_manifest.json"  # avoid clobbering trial manifest
+    else:
+        out_root = (Path.cwd() / exp["paths"]["out_root"]).resolve()
+        ensure_dir(out_root)
+        run_dir = ensure_dir(out_root / args.scenario / f"b{qc.b}_seed{qc.seed}_{time.strftime('%Y%m%d_%H%M%S')}")
+        manifest_name = exp["paths"]["run_manifest_name"]
+
     csv_path = run_dir / "state_raw_and_qd.csv"
-    manifest_path = run_dir / exp["paths"]["run_manifest_name"]
+    manifest_path = run_dir / manifest_name
 
     print(f"[02] Connecting MAVLink udpin:{port} ...")
     m = connect_udpin(port=port, timeout_s=15.0)
@@ -70,8 +78,6 @@ def main():
     row = {k: "" for k in fields}
     t0 = time.time()
     last_write = 0.0
-
-    # Deterministic per-row RNG: seed + row index (so repeats are stable)
     row_counter = 0
 
     with open(csv_path, "w", newline="") as f:
@@ -119,9 +125,8 @@ def main():
             have_pos = row["lp_time_boot_ms"] != ""
             have_att = (row["att_time_boot_ms"] != "") or (row["q_time_boot_ms"] != "")
             if (t - last_write) >= dt and have_pos and have_att:
-                # per-row seeded dither for reproducibility
                 import random
-                rng = random.Random(qc.seed + row_counter)
+                rng = random.Random(qc.seed + row_counter)  # deterministic per-row dither
 
                 for k in qd_vars:
                     vmin, vmax = bounds[k]
@@ -147,10 +152,9 @@ def main():
             "safety_margin_frac": qc.safety_margin_frac,
             "bounds_yaml": str(bounds_path),
         },
-        "outputs": {
-            "state_raw_and_qd_csv": str(csv_path),
-        },
+        "outputs": {"state_raw_and_qd_csv": str(csv_path)},
         "ref_traj": traj,
+        "note": "Logger manifest. Trial-level manifest is written by 05_run_trial.py.",
     })
 
     print(f"[02] Done. Wrote {csv_path} and {manifest_path}")
