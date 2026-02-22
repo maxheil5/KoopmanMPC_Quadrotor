@@ -2,3 +2,4 @@ pymavlink
 pyyaml
 numpy
 pandas
+pyulog
