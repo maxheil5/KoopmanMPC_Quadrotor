@@ -1,0 +1,84 @@
+version: 1
+
+# This file defines how we construct the physical state x(t) from logged SITL CSV columns.
+# It is the contract between ubuntu_scripts logs and MATLAB EDMDc/MPC.
+
+frame_convention:
+  local_frame: NED              # x=north, y=east, z=down (PX4 LOCAL_POSITION_NED)
+  body_frame: FRD               # PX4 body frame (Forward-Right-Down) for rates/setpoints (documented here)
+  gravity_axis: +z_down
+
+timebase:
+  state_time_column: t_wall_s   # used in trial_for_matlab.csv
+  units: seconds
+
+state_x:
+  description: >
+    Physical state x used for learning/prediction/tracking.
+    This is a practical SITL-aligned state that matches your MATLAB pipeline inputs.
+    Lifted dictionary (p=3) and EDMDc operate on this x.
+
+  ordering:
+    # Positions (m)
+    - pos_x_n
+    - pos_y_e
+    - pos_z_d
+    # Velocities (m/s)
+    - vel_x_n
+    - vel_y_e
+    - vel_z_d
+    # Attitude representation (choose one primary representation for MATLAB)
+    # Recommended primary: quaternion (w,x,y,z). Euler kept for sanity/plots.
+    - quat_w
+    - quat_x
+    - quat_y
+    - quat_z
+    # Body rates (rad/s)
+    - p
+    - q
+    - r
+
+  mapping_from_csv:
+    pos_x_n: x_n
+    pos_y_e: y_e
+    pos_z_d: z_d
+    vel_x_n: vx
+    vel_y_e: vy
+    vel_z_d: vz
+
+    quat_w: q1
+    quat_x: q2
+    quat_y: q3
+    quat_z: q4
+
+    p: p
+    q: q
+    r: r
+
+  units:
+    pos: m
+    vel: m/s
+    quat: unitless
+    rates: rad/s
+
+attitude_conventions:
+  quaternion:
+    order: [w, x, y, z]         # matches ATTITUDE_QUATERNION q1..q4 in MAVLink
+    normalization: true         # MATLAB loader should normalize as a safety step
+  euler:
+    columns_present_for_debug: [roll, pitch, yaw]
+    units: rad
+
+quantization_contract:
+  raw_columns: [x_n, y_e, z_d, vx, vy, vz, roll, pitch, yaw, p, q, r, q1, q2, q3, q4]
+  quantized_suffix: "_qd"
+  note: >
+    Quantized/decoded columns are stored as <name>_qd and use the same units as raw.
+
+koopman_lifting:
+  enabled: true
+  p: 3
+  expected_lifted_dimension_N: 51
+  note: >
+    Your MATLAB code defines the lifting map phi(x) and will remain the source of truth.
+    This file only fixes the physical x ordering and conventions so MATLAB can build phi(x) consistently.
